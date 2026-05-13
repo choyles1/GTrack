@@ -637,36 +637,48 @@
             closePatientModal();
             showLoading();
 
-            if (id) {
-                // Type-safe lookup
-                const index = patients.findIndex(p => String(p.id) === String(id));
-                if(index > -1) patients[index] = { ...patients[index], ...patientData };
-            } else {
-                patients.push({ id: Date.now().toString(), visitedToday: false, ...patientData, createdAt: new Date().toISOString() });
+            try {
+                if (id) {
+                    // Type-safe lookup
+                    const index = patients.findIndex(p => String(p.id) === String(id));
+                    if(index > -1) patients[index] = { ...patients[index], ...patientData };
+                } else {
+                    patients.push({ id: Date.now().toString(), visitedToday: false, ...patientData, createdAt: new Date().toISOString() });
+                }
+                
+                maintainRouteOrder();
+                renderUI();
+                await syncData();
+            } catch (error) {
+                console.error("Error saving patient:", error);
+                showNotice("Error", "An unexpected error occurred while saving the patient.", "error");
+            } finally {
+                hideLoading();
             }
-            
-            maintainRouteOrder();
-            renderUI();
-            await syncData();
-            hideLoading();
         }
 
         async function deletePatient(id) {
             confirmAction("Delete Patient?", "Are you sure you want to remove this patient? This cannot be undone.", async () => {
                 showLoading();
                 
-                // Type-safe filter to ensure deletion works even if old IDs were saved as numbers
-                patients = patients.filter(p => String(p.id) !== String(id));
-                
-                // Clean up ghost IDs from all route days to prevent phantom data
-                for (let day in routeOrders) {
-                    routeOrders[day] = (routeOrders[day] || []).filter(routeId => String(routeId) !== String(id));
+                try {
+                    // Type-safe filter to ensure deletion works even if old IDs were saved as numbers
+                    patients = patients.filter(p => String(p.id) !== String(id));
+                    
+                    // Clean up ghost IDs from all route days to prevent phantom data
+                    for (let day in routeOrders) {
+                        routeOrders[day] = (routeOrders[day] || []).filter(routeId => String(routeId) !== String(id));
+                    }
+                    
+                    maintainRouteOrder();
+                    renderUI();
+                    await syncData();
+                } catch (error) {
+                    console.error("Error deleting patient:", error);
+                    showNotice("Error", "An unexpected error occurred while deleting the patient.", "error");
+                } finally {
+                    hideLoading();
                 }
-                
-                maintainRouteOrder();
-                renderUI();
-                await syncData();
-                hideLoading();
             });
         }
 
@@ -925,15 +937,21 @@
                 closeSettingsModal();
                 showLoading();
 
-                if (newId) {
-                    jsonbinId = newId;
-                    localStorage.setItem('jsonbinId', jsonbinId);
-                    await fetchFromJSONbin();
-                } else {
-                    // No ID provided, create a new bin with current data
-                    await createJSONbin();
+                try {
+                    if (newId) {
+                        jsonbinId = newId;
+                        localStorage.setItem('jsonbinId', jsonbinId);
+                        await fetchFromJSONbin();
+                    } else {
+                        // No ID provided, create a new bin with current data
+                        await createJSONbin();
+                    }
+                } catch (error) {
+                    console.error("Error in settings:", error);
+                    showNotice("Setup Error", "An error occurred while applying your settings.", "error");
+                } finally {
+                    hideLoading();
                 }
-                hideLoading();
             } else {
                 // Clear settings
                 jsonbinKey = '';
@@ -1053,10 +1071,12 @@
 
         function showLoading() {
             loadingOverlay.classList.remove('hidden');
+            loadingOverlay.classList.add('flex');
         }
 
         function hideLoading() {
             loadingOverlay.classList.add('hidden');
+            loadingOverlay.classList.remove('flex');
         }
 
         // Custom Alert/Confirm System
