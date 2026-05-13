@@ -575,14 +575,14 @@
         function maintainRouteOrder() {
             const todayPatients = patients.filter(p => p.visitDays && p.visitDays.includes(currentDayOfWeek.toString()));
             
-            // Remove IDs from order that are no longer scheduled for today
-            const validIds = todayPatients.map(p => p.id);
-            routeOrders[currentDayOfWeek] = (routeOrders[currentDayOfWeek] || []).filter(id => validIds.includes(id));
+            // Remove IDs from order that are no longer scheduled for today (Type-safe)
+            const validIds = todayPatients.map(p => String(p.id));
+            routeOrders[currentDayOfWeek] = (routeOrders[currentDayOfWeek] || []).filter(id => validIds.includes(String(id)));
 
             // Add new IDs to the end of the order
             todayPatients.forEach(p => {
-                if (!routeOrders[currentDayOfWeek].includes(p.id)) {
-                    routeOrders[currentDayOfWeek].push(p.id);
+                if (!routeOrders[currentDayOfWeek].map(String).includes(String(p.id))) {
+                    routeOrders[currentDayOfWeek].push(String(p.id));
                 }
             });
             saveLocalData(); // Save locally, full sync happens on active saves
@@ -626,7 +626,8 @@
             showLoading();
 
             if (id) {
-                const index = patients.findIndex(p => p.id === id);
+                // Type-safe lookup
+                const index = patients.findIndex(p => String(p.id) === String(id));
                 if(index > -1) patients[index] = { ...patients[index], ...patientData };
             } else {
                 patients.push({ id: Date.now().toString(), visitedToday: false, ...patientData, createdAt: new Date().toISOString() });
@@ -641,7 +642,15 @@
         async function deletePatient(id) {
             confirmAction("Delete Patient?", "Are you sure you want to remove this patient? This cannot be undone.", async () => {
                 showLoading();
-                patients = patients.filter(p => p.id !== id);
+                
+                // Type-safe filter to ensure deletion works even if old IDs were saved as numbers
+                patients = patients.filter(p => String(p.id) !== String(id));
+                
+                // Clean up ghost IDs from all route days to prevent phantom data
+                for (let day in routeOrders) {
+                    routeOrders[day] = (routeOrders[day] || []).filter(routeId => String(routeId) !== String(id));
+                }
+                
                 maintainRouteOrder();
                 renderUI();
                 await syncData();
@@ -680,8 +689,8 @@
 
             noVisitsMsg.classList.add('hidden');
 
-            // Sort according to today's route order
-            const orderedPatients = routeOrders[currentDayOfWeek].map(id => todayPatients.find(p => p.id === id)).filter(Boolean);
+            // Sort according to today's route order (Type-safe lookup)
+            const orderedPatients = routeOrders[currentDayOfWeek].map(id => todayPatients.find(p => String(p.id) === String(id))).filter(Boolean);
 
             orderedPatients.forEach((patient, index) => {
                 // Card for list
@@ -971,7 +980,8 @@
         }
 
         async function togglePatientStatus(id) {
-            const patient = patients.find(p => p.id === id);
+            // Type-safe search
+            const patient = patients.find(p => String(p.id) === String(id));
             if (patient) {
                 patient.visitedToday = !patient.visitedToday;
                 renderTodayView();
