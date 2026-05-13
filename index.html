@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home Health Visit Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        
+        /* Custom scrollbar for better look */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        .tab-active {
+            border-bottom-color: #3b82f6 !important;
+            color: #3b82f6 !important;
+        }
+        
+        .sortable-ghost {
+            opacity: 0.4;
+            background-color: #e2e8f0;
+        }
+    </style>
+</head>
+<body class="text-gray-800 h-screen flex flex-col overflow-hidden">
+
+    <header class="bg-blue-600 text-white shadow-md z-10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center py-4">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-heartbeat text-2xl"></i>
+                    <h1 class="text-xl font-bold tracking-tight">Visit Tracker</h1>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-sm font-medium bg-blue-700 px-3 py-1 rounded-full flex items-center gap-2 cursor-pointer hover:bg-blue-800 transition" onclick="openSettingsModal()" title="Configure JSONbin Sync">
+                        <span id="sync-status-indicator" class="w-2 h-2 rounded-full bg-yellow-400"></span>
+                        <span id="sync-status-text">Local Mode</span>
+                    </div>
+                    <button onclick="openSettingsModal()" class="text-blue-100 hover:text-white transition-colors">
+                        <i class="fas fa-cog text-xl"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Tabs -->
+            <div class="flex space-x-1 mt-2 border-b border-blue-500 overflow-x-auto no-scrollbar">
+                <button onclick="switchTab('today')" id="tab-today" class="tab-btn px-4 py-2 border-b-2 border-transparent hover:text-blue-200 transition-colors whitespace-nowrap tab-active font-medium">
+                    <i class="fas fa-calendar-day mr-2"></i>Today's Route
+                </button>
+                <button onclick="switchTab('patients')" id="tab-patients" class="tab-btn px-4 py-2 border-b-2 border-transparent text-blue-100 hover:text-white transition-colors whitespace-nowrap font-medium">
+                    <i class="fas fa-users mr-2"></i>Patients & Schedule
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 overflow-hidden relative">
+        
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="absolute inset-0 bg-gray-50 bg-opacity-75 z-50 flex flex-col items-center justify-center">
+            <i class="fas fa-spinner fa-spin text-4xl text-blue-500 mb-4"></i>
+            <p class="text-gray-600 font-medium">Loading data...</p>
+        </div>
+
+        <!-- Today's Route View -->
+        <div id="view-today" class="h-full w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col md:flex-row gap-6 overflow-y-auto">
+            
+            <!-- Left Column: Visit List -->
+            <div class="w-full md:w-1/2 lg:w-5/12 flex flex-col bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden h-full">
+                <div class="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center shrink-0">
+                    <div>
+                        <h2 class="text-lg font-semibold text-gray-800" id="current-date-display">Today</h2>
+                        <p class="text-sm text-gray-500" id="visit-count-display">0 visits scheduled</p>
+                    </div>
+                    <button onclick="openRouteInMaps()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center gap-2">
+                        <i class="fas fa-map-marked-alt"></i> Navigate All
+                    </button>
+                </div>
+                
+                <div class="p-3 bg-blue-50 text-blue-800 text-xs flex items-center gap-2 shrink-0 border-b border-blue-100">
+                    <i class="fas fa-info-circle"></i> Drag and drop cards to reorder your route.
+                </div>
+
+                <div id="today-visits-list" class="flex-1 overflow-y-auto p-2 space-y-3">
+                    <!-- Visits will be injected here -->
+                    <div class="text-center py-10 text-gray-400 italic hidden" id="no-visits-msg">
+                        No visits scheduled for today.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Map Preview / Info -->
+            <div class="w-full md:w-1/2 lg:w-7/12 bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col h-full overflow-hidden">
+                <div class="p-4 border-b border-gray-200 bg-gray-50 shrink-0">
+                    <h2 class="text-lg font-semibold text-gray-800">Route Overview</h2>
+                </div>
+                <div class="flex-1 p-6 flex flex-col items-center justify-center text-center bg-gray-50">
+                    <div class="w-24 h-24 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                        <i class="fas fa-map-location-dot text-4xl"></i>
+                    </div>
+                    <h3 class="text-xl font-medium text-gray-700 mb-2">Google Maps Integration</h3>
+                    <p class="text-gray-500 max-w-md mb-6">
+                        Clicking "Navigate All" will generate a multi-stop route in Google Maps based on your list order. You can also tap the map icon on individual patients for single-stop directions.
+                    </p>
+                    
+                    <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm w-full max-w-md text-left">
+                        <h4 class="font-medium text-gray-700 mb-2 border-b pb-2">Current Route Order:</h4>
+                        <ol id="route-summary-list" class="list-decimal list-inside text-sm text-gray-600 space-y-1">
+                            <!-- Route summary injected here -->
+                            <li class="text-gray-400 italic">No stops added yet.</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-patients" class="h-full w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 hidden flex-col overflow-hidden">
+            
+            <div class="flex justify-between items-center mb-6 shrink-0">
+                <h2 class="text-2xl font-bold text-gray-800">Patient Directory</h2>
+                <button onclick="openPatientModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center gap-2">
+                    <i class="fas fa-user-plus"></i> Add Patient
+                </button>
+            </div>
+
+            <!-- Search and Filter -->
+            <div class="mb-6 flex gap-4 shrink-0">
+                <div class="relative flex-1">
+                    <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="search-patients" placeholder="Search patients..." class="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow">
+                </div>
+                <div class="relative">
+                     <select id="filter-day" class="pl-3 pr-8 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none appearance-none bg-white">
+                        <option value="all">All Days</option>
+                        <option value="1">Monday</option>
+                        <option value="2">Tuesday</option>
+                        <option value="3">Wednesday</option>
+                        <option value="4">Thursday</option>
+                        <option value="5">Friday</option>
+                        <option value="6">Saturday</option>
+                        <option value="0">Sunday</option>
+                    </select>
+                    <i class="fas fa-chevron-down absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none text-xs"></i>
+                </div>
+            </div>
+
+            <!-- Patient List Grid -->
+            <div class="flex-1 overflow-y-auto pr-2 pb-20">
+                <div id="patients-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Patient cards will be injected here -->
+                </div>
+                <div id="no-patients-msg" class="text-center py-12 hidden">
+                    <div class="inline-block p-4 rounded-full bg-gray-100 mb-4">
+                        <i class="fas fa-users-slash text-3xl text-gray-400"></i>
+                    </div>
+                    <h3 class="text-lg font-medium text-gray-700">No patients found</h3>
+                    <p class="text-gray-500">Add a new patient to get started or adjust your filters.</p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Patient Modal (Add/Edit) -->
+    <div id="patient-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center backdrop-blur-sm p-4">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center shrink-0">
+                <h3 class="text-xl font-bold text-gray-800" id="modal-title">Add New Patient</h3>
+                <button onclick="closePatientModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto flex-1">
+                <form id="patient-form" class="space-y-4">
+                    <input type="hidden" id="patient-id">
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+                        <input type="text" id="p-name" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Address *</label>
+                        <div class="relative">
+                            <i class="fas fa-map-marker-alt absolute left-3 top-3 text-gray-400"></i>
+                            <input type="text" id="p-address" required placeholder="Street, City, State ZIP" class="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                            <div class="relative">
+                                <i class="fas fa-phone absolute left-3 top-3 text-gray-400"></i>
+                                <input type="tel" id="p-phone" placeholder="(555) 123-4567" class="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Diagnosis/Notes</label>
+                            <input type="text" id="p-notes" placeholder="Brief note..." class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2 border-b pb-1">Scheduled Visit Days</label>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50 border border-transparent hover:border-gray-200">
+                                <input type="checkbox" name="visit-days" value="1" class="rounded text-blue-600 focus:ring-blue-500">
+                                <span class="text-sm text-gray-700">Monday</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50 border border-transparent hover:border-gray-200">
+                                <input type="checkbox" name="visit-days" value="2" class="rounded text-blue-600 focus:ring-blue-500">
+                                <span class="text-sm text-gray-700">Tuesday</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50 border border-transparent hover:border-gray-200">
+                                <input type="checkbox" name="visit-days" value="3" class="rounded text-blue-600 focus:ring-blue-500">
+                                <span class="text-sm text-gray-700">Wednesday</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50 border border-transparent hover:border-gray-200">
+                                <input type="checkbox" name="visit-days" value="4" class="rounded text-blue-600 focus:ring-blue-500">
+                                <span class="text-sm text-gray-700">Thursday</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50 border border-transparent hover:border-gray-200">
+                                <input type="checkbox" name="visit-days" value="5" class="rounded text-blue-600 focus:ring-blue-500">
+                                <span class="text-sm text-gray-700">Friday</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50 border border-transparent hover:border-gray-200">
+                                <input type="checkbox" name="visit-days" value="6" class="rounded text-blue-600 focus:ring-blue-500">
+                                <span class="text-sm text-gray-700">Saturday</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50 border border-transparent hover:border-gray-200">
+                                <input type="checkbox" name="visit-days" value="0" class="rounded text-blue-600 focus:ring-blue-500">
+                                <span class="text-sm text-gray-700">Sunday</span>
+                            </label>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 shrink-0">
+                <button type="button" onclick="closePatientModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 font-medium transition-colors">
+                    Cancel
+                </button>
+                <button type="button" onclick="savePatient()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors shadow-sm flex items-center gap-2">
+                    <i class="fas fa-save"></i> Save Patient
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal (JSONbin) -->
+    <div id="settings-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center backdrop-blur-sm p-4">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
+            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center shrink-0">
+                <h3 class="text-xl font-bold text-gray-800"><i class="fas fa-cloud-sync text-blue-600 mr-2"></i> Sync Settings</h3>
+                <button onclick="closeSettingsModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto">
+                <div class="mb-4 text-sm text-gray-600 bg-blue-50 p-3 rounded-lg border border-blue-100">
+                    <p class="mb-2"><strong>Want to sync across devices?</strong></p>
+                    <p>Enter your <a href="https://jsonbin.io" target="_blank" class="text-blue-600 underline">JSONbin.io</a> Master Key below. If you don't have a Bin ID yet, leave it blank and we'll create one for you!</p>
+                </div>
+
+                <form id="settings-form" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">X-Master-Key (API Key)</label>
+                        <input type="password" id="s-api-key" placeholder="$2a$10$..." class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Bin ID (Optional)</label>
+                        <input type="text" id="s-bin-id" placeholder="Leave blank to auto-create" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                    </div>
+                </form>
+            </div>
+            
+            <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 shrink-0">
+                <button type="button" onclick="closeSettingsModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 font-medium transition-colors">
+                    Cancel
+                </button>
+                <button type="button" onclick="saveSettings()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors shadow-sm flex items-center gap-2">
+                    <i class="fas fa-plug"></i> Connect & Sync
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Modal for Alerts/Confirmations -->
+    <div id="custom-alert" class="fixed inset-0 bg-black bg-opacity-50 z-[60] hidden flex items-center justify-center backdrop-blur-sm p-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden transform transition-all scale-95 opacity-0" id="alert-content">
+            <div class="p-6">
+                <div class="flex items-center gap-4 mb-4">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center shrink-0" id="alert-icon-container">
+                        <i class="fas fa-info-circle text-xl" id="alert-icon"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-900" id="alert-title">Notice</h3>
+                </div>
+                <p class="text-gray-600 mb-6" id="alert-message">Message goes here</p>
+                <div class="flex justify-end gap-3" id="alert-actions">
+                    <button id="alert-cancel" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 font-medium transition-colors hidden">Cancel</button>
+                    <button id="alert-confirm" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors shadow-sm">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global State
+        let patients = [];
+        let sortableList = null;
+        let routeOrders = { 0:[], 1:[], 2:[], 3:[], 4:[], 5:[], 6:[] }; 
+        let currentDayOfWeek = new Date().getDay(); // 0 (Sun) to 6 (Sat)
+        
+        // JSONbin Configuration
+        let jsonbinKey = localStorage.getItem('jsonbinKey') || '';
+        let jsonbinId = localStorage.getItem('jsonbinId') || '';
+
+        // DOM Elements
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const syncStatusIndicator = document.getElementById('sync-status-indicator');
+        const syncStatusText = document.getElementById('sync-status-text');
+        
+        // Expose functions to window for inline onclick handlers
+        window.switchTab = switchTab;
+        window.openPatientModal = openPatientModal;
+        window.closePatientModal = closePatientModal;
+        window.savePatient = savePatient;
+        window.deletePatient = deletePatient;
+        window.openRouteInMaps = openRouteInMaps;
+        window.openSingleMap = openSingleMap;
+        window.callPatient = callPatient;
+        window.textPatient = textPatient;
+        window.togglePatientStatus = togglePatientStatus;
+        window.openSettingsModal = openSettingsModal;
+        window.closeSettingsModal = closeSettingsModal;
+        window.saveSettings = saveSettings;
+
+        // Initialize App
+        async function initApp() {
+            updateDateDisplay();
+            setupEventListeners();
+            loadLocalData();
+            
+            if (jsonbinKey && jsonbinId) {
+                await fetchFromJSONbin();
+            } else {
+                updateSyncStatus('local');
+                renderUI();
+                hideLoading();
+            }
+        }
+
+        function loadLocalData() {
+            const localPatients = localStorage.getItem('healthTrackerPatients');
+            const localRoutes = localStorage.getItem('healthTrackerRoutes');
+            
+            if (localPatients) patients = JSON.parse(localPatients);
+            if (localRoutes) routeOrders = JSON.parse(localRoutes);
+        }
+
+        function updateSyncStatus(status) {
+            syncStatusIndicator.className = 'w-2 h-2 rounded-full';
+            if (status === 'synced') {
+                syncStatusIndicator.classList.add('bg-green-400');
+                syncStatusText.textContent = 'Cloud Synced';
+            } else if (status === 'syncing') {
+                syncStatusIndicator.classList.add('bg-blue-400', 'animate-pulse');
+                syncStatusText.textContent = 'Syncing...';
+            } else if (status === 'error') {
+                syncStatusIndicator.classList.add('bg-red-400');
+                syncStatusText.textContent = 'Sync Error';
+            } else {
+                syncStatusIndicator.classList.add('bg-yellow-400');
+                syncStatusText.textContent = 'Local Mode';
+            }
+        }
+
+        // --- JSONbin.io API Methods ---
+
+        async function fetchFromJSONbin() {
+            showLoading();
+            updateSyncStatus('syncing');
+            try {
+                const response = await fetch(`https://api.jsonbin.io/v3/b/${jsonbinId}/latest`, {
+                    headers: { 'X-Master-Key': jsonbinKey }
+                });
+                
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const result = await response.json();
+                
+                if (result.record) {
+                    patients = result.record.patients || [];
+                    routeOrders = result.record.routeOrders || { 0:[], 1:[], 2:[], 3:[], 4:[], 5:[], 6:[] };
+                    saveLocalData(); // update local cache
+                }
+                
+                updateSyncStatus('synced');
+            } catch (error) {
+                console.error("JSONbin Fetch Error:", error);
+                showNotice("Sync Error", "Could not fetch data from JSONbin. Using local data.", "error");
+                updateSyncStatus('error');
+            } finally {
+                maintainRouteOrder();
+                renderUI();
+                hideLoading();
+            }
+        }
+
+        async function saveToJSONbin() {
+            if (!jsonbinKey || !jsonbinId) return;
+            
+            updateSyncStatus('syncing');
+            const dataToSync = { patients, routeOrders };
+
+            try {
+                const response = await fetch(`https://api.jsonbin.io/v3/b/${jsonbinId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Master-Key': jsonbinKey
+                    },
+                    body: JSON.stringify(dataToSync)
+                });
+                
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                updateSyncStatus('synced');
+            } catch (error) {
+                console.error("JSONbin Save Error:", error);
+                showNotice("Sync Error", "Could not save data to JSONbin. Changes saved locally.", "warning");
+                updateSyncStatus('error');
+            }
+        }
+
+        async function createJSONbin() {
+            updateSyncStatus('syncing');
+            const dataToSync = { patients, routeOrders };
+
+            try {
+                const response = await fetch(`https://api.jsonbin.io/v3/b`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Master-Key': jsonbinKey,
+                        'X-Bin-Name': 'HomeHealthTrackerData'
+                    },
+                    body: JSON.stringify(dataToSync)
+                });
+                
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const result = await response.json();
+                
+                jsonbinId = result.metadata.id;
+                localStorage.setItem('jsonbinId', jsonbinId);
+                
+                showNotice("Connected!", "New JSONbin created successfully. Your data is now syncing to the cloud.", "success");
+                updateSyncStatus('synced');
+            } catch (error) {
+                console.error("JSONbin Create Error:", error);
+                showNotice("Setup Error", "Could not create JSONbin. Check your API key.", "error");
+                updateSyncStatus('error');
+            }
+        }
+
+        // --- Data Management ---
+
+        function saveLocalData() {
+            localStorage.setItem('healthTrackerPatients', JSON.stringify(patients));
+            localStorage.setItem('healthTrackerRoutes', JSON.stringify(routeOrders));
+        }
+
+        async function syncData() {
+            saveLocalData();
+            if (jsonbinKey && jsonbinId) {
+                await saveToJSONbin();
+            }
+        }
+
+        function maintainRouteOrder() {
+            const todayPatients = patients.filter(p => p.visitDays && p.visitDays.includes(currentDayOfWeek.toString()));
+            
+            // Remove IDs from order that are no longer scheduled for today
+            const validIds = todayPatients.map(p => p.id);
+            routeOrders[currentDayOfWeek] = (routeOrders[currentDayOfWeek] || []).filter(id => validIds.includes(id));
+
+            // Add new IDs to the end of the order
+            todayPatients.forEach(p => {
+                if (!routeOrders[currentDayOfWeek].includes(p.id)) {
+                    routeOrders[currentDayOfWeek].push(p.id);
+                }
+            });
+            saveLocalData(); // Save locally, full sync happens on active saves
+        }
+
+        async function savePatient() {
+            // Validate form
+            const name = document.getElementById('p-name').value.trim();
+            const address = document.getElementById('p-address').value.trim();
+            if (!name || !address) {
+                showNotice("Missing Info", "Please provide at least a name and address.", "warning");
+                return;
+            }
+
+            const phone = document.getElementById('p-phone').value.trim();
+            const notes = document.getElementById('p-notes').value.trim();
+            const id = document.getElementById('patient-id').value;
+            
+            // Get selected days
+            const dayCheckboxes = document.querySelectorAll('input[name="visit-days"]:checked');
+            const visitDays = Array.from(dayCheckboxes).map(cb => cb.value);
+
+            const patientData = {
+                name, address, phone, notes, visitDays,
+                updatedAt: new Date().toISOString()
+            };
+
+            closePatientModal();
+            showLoading();
+
+            if (id) {
+                const index = patients.findIndex(p => p.id === id);
+                if(index > -1) patients[index] = { ...patients[index], ...patientData };
+            } else {
+                patients.push({ id: Date.now().toString(), visitedToday: false, ...patientData, createdAt: new Date().toISOString() });
+            }
+            
+            maintainRouteOrder();
+            renderUI();
+            await syncData();
+            hideLoading();
+        }
+
+        async function deletePatient(id) {
+            confirmAction("Delete Patient?", "Are you sure you want to remove this patient? This cannot be undone.", async () => {
+                showLoading();
+                patients = patients.filter(p => p.id !== id);
+                maintainRouteOrder();
+                renderUI();
+                await syncData();
+                hideLoading();
+            });
+        }
+
+        // --- UI Rendering ---
+
+        function renderUI() {
+            renderTodayView();
+            renderPatientsView();
+        }
+
+        function renderTodayView() {
+            const listContainer = document.getElementById('today-visits-list');
+            const noVisitsMsg = document.getElementById('no-visits-msg');
+            const summaryList = document.getElementById('route-summary-list');
+            
+            listContainer.innerHTML = '';
+            summaryList.innerHTML = '';
+            
+            // Ensure array exists for today
+            if(!routeOrders[currentDayOfWeek]) routeOrders[currentDayOfWeek] = [];
+            
+            const todayPatients = patients.filter(p => p.visitDays && p.visitDays.includes(currentDayOfWeek.toString()));
+            
+            document.getElementById('visit-count-display').textContent = `${todayPatients.length} visit${todayPatients.length !== 1 ? 's' : ''} scheduled`;
+
+            if (todayPatients.length === 0) {
+                noVisitsMsg.classList.remove('hidden');
+                listContainer.appendChild(noVisitsMsg);
+                summaryList.innerHTML = '<li class="text-gray-400 italic">No stops added yet.</li>';
+                return;
+            }
+
+            noVisitsMsg.classList.add('hidden');
+
+            // Sort according to today's route order
+            const orderedPatients = routeOrders[currentDayOfWeek].map(id => todayPatients.find(p => p.id === id)).filter(Boolean);
+
+            orderedPatients.forEach((patient, index) => {
+                // Card for list
+                const card = document.createElement('div');
+                card.className = 'bg-white border border-gray-200 rounded-lg p-4 shadow-sm flex items-start gap-3 cursor-grab active:cursor-grabbing hover:border-blue-300 transition-colors relative group';
+                card.dataset.id = patient.id;
+                
+                // Status check (in-memory for this session)
+                const isVisited = patient.visitedToday === true;
+                const statusClass = isVisited ? 'text-green-500 bg-green-50 border-green-200' : 'text-gray-400 bg-gray-50 border-gray-200 hover:text-blue-500 hover:bg-blue-50 hover:border-blue-200';
+
+                card.innerHTML = `
+                    <div class="mt-1 drag-handle text-gray-300 group-hover:text-gray-500 cursor-grab px-1">
+                        <i class="fas fa-grip-vertical"></i>
+                    </div>
+                    
+                    <button onclick="togglePatientStatus('${patient.id}')" class="mt-1 w-6 h-6 rounded-full border ${statusClass} flex items-center justify-center shrink-0 transition-colors" title="Mark as Visited">
+                        ${isVisited ? '<i class="fas fa-check text-xs"></i>' : ''}
+                    </button>
+                    
+                    <div class="flex-1 min-w-0">
+                        <div class="flex justify-between items-start">
+                            <h4 class="font-bold text-gray-800 truncate ${isVisited ? 'line-through text-gray-500' : ''}">${patient.name}</h4>
+                            <div class="flex gap-2">
+                                ${patient.phone ? `<button onclick="callPatient('${patient.phone}')" class="text-green-600 hover:bg-green-50 p-1.5 rounded" title="Call"><i class="fas fa-phone"></i></button>
+                                                   <button onclick="textPatient('${patient.phone}')" class="text-blue-600 hover:bg-blue-50 p-1.5 rounded" title="Text"><i class="fas fa-comment"></i></button>` : ''}
+                                <button onclick="openSingleMap('${encodeURIComponent(patient.address)}')" class="text-red-500 hover:bg-red-50 p-1.5 rounded" title="Directions"><i class="fas fa-map-marker-alt"></i></button>
+                            </div>
+                        </div>
+                        <p class="text-sm text-gray-600 truncate mt-1 flex items-center gap-1">
+                             <i class="fas fa-location-arrow text-xs text-gray-400"></i> ${patient.address}
+                        </p>
+                        ${patient.notes ? `<p class="text-xs text-gray-500 mt-2 bg-gray-50 p-2 rounded italic"><i class="fas fa-clipboard text-gray-400 mr-1"></i>${patient.notes}</p>` : ''}
+                    </div>
+                `;
+                listContainer.appendChild(card);
+
+                // Summary list item
+                const li = document.createElement('li');
+                li.className = isVisited ? 'line-through text-gray-400' : '';
+                li.textContent = patient.name;
+                summaryList.appendChild(li);
+            });
+
+            // Initialize/Update Sortable
+            if (sortableList) {
+                sortableList.destroy();
+            }
+            sortableList = new Sortable(listContainer, {
+                animation: 150,
+                handle: '.drag-handle',
+                ghostClass: 'sortable-ghost',
+                onEnd: async function (evt) {
+                    // Update order array based on DOM
+                    const itemEls = listContainer.querySelectorAll('[data-id]');
+                    routeOrders[currentDayOfWeek] = Array.from(itemEls).map(el => el.dataset.id);
+                    renderTodayView(); // Re-render to update summary list
+                    await syncData(); // Save new order to cloud
+                },
+            });
+        }
+
+        function renderPatientsView() {
+            const grid = document.getElementById('patients-grid');
+            const noMsg = document.getElementById('no-patients-msg');
+            const searchTerm = document.getElementById('search-patients').value.toLowerCase();
+            const filterDay = document.getElementById('filter-day').value;
+
+            grid.innerHTML = '';
+            
+            const dayNames = {0:'Sun', 1:'Mon', 2:'Tue', 3:'Wed', 4:'Thu', 5:'Fri', 6:'Sat'};
+
+            // Sort alphabetically by default
+            let filteredPatients = [...patients].sort((a, b) => a.name.localeCompare(b.name));
+
+            // Apply filters
+            filteredPatients = filteredPatients.filter(p => {
+                const matchesSearch = p.name.toLowerCase().includes(searchTerm) || 
+                                      p.address.toLowerCase().includes(searchTerm) ||
+                                      (p.notes && p.notes.toLowerCase().includes(searchTerm));
+                
+                const matchesDay = filterDay === 'all' || (p.visitDays && p.visitDays.includes(filterDay));
+                
+                return matchesSearch && matchesDay;
+            });
+
+            if (filteredPatients.length === 0) {
+                noMsg.classList.remove('hidden');
+                return;
+            }
+            noMsg.classList.add('hidden');
+
+            filteredPatients.forEach(patient => {
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex flex-col hover:shadow-md transition-shadow';
+                
+                // Format days badge
+                let daysHtml = '<span class="text-xs text-gray-400 italic">No days scheduled</span>';
+                if (patient.visitDays && patient.visitDays.length > 0) {
+                    const sortedDays = [...patient.visitDays].sort().map(d => dayNames[d]);
+                    daysHtml = sortedDays.map(d => `<span class="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded">${d}</span>`).join(' ');
+                }
+
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-3">
+                        <h3 class="font-bold text-lg text-gray-900 leading-tight">${patient.name}</h3>
+                        <div class="flex space-x-1 shrink-0 ml-2">
+                            <button onclick='editPatient(${JSON.stringify(patient).replace(/'/g, "&#39;")})' class="p-1.5 text-gray-400 hover:text-blue-600 transition-colors" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button onclick="deletePatient('${patient.id}')" class="p-1.5 text-gray-400 hover:text-red-600 transition-colors" title="Delete">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-2 mb-4 flex-1">
+                        <p class="text-sm text-gray-600 flex items-start gap-2">
+                            <i class="fas fa-map-marker-alt text-gray-400 mt-1 shrink-0 w-4"></i>
+                            <span class="break-words">${patient.address}</span>
+                        </p>
+                        ${patient.phone ? `
+                        <p class="text-sm text-gray-600 flex items-center gap-2">
+                            <i class="fas fa-phone text-gray-400 shrink-0 w-4"></i>
+                            <a href="tel:${patient.phone}" class="text-blue-600 hover:underline">${patient.phone}</a>
+                        </p>` : ''}
+                    </div>
+
+                    <div class="mt-auto border-t border-gray-100 pt-3">
+                        <div class="flex flex-wrap gap-1 mb-2">
+                            ${daysHtml}
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        // --- Helpers & Modals ---
+
+        function setupEventListeners() {
+            document.getElementById('search-patients').addEventListener('input', renderPatientsView);
+            document.getElementById('filter-day').addEventListener('change', renderPatientsView);
+        }
+
+        function switchTab(tab) {
+            document.getElementById('view-today').classList.add('hidden');
+            document.getElementById('view-patients').classList.add('hidden');
+            document.getElementById('view-today').classList.remove('flex');
+            
+            document.getElementById('tab-today').classList.remove('tab-active', 'text-blue-100');
+            document.getElementById('tab-patients').classList.remove('tab-active', 'text-blue-100');
+            document.getElementById('tab-today').classList.add('text-blue-100');
+            document.getElementById('tab-patients').classList.add('text-blue-100');
+
+            if (tab === 'today') {
+                document.getElementById('view-today').classList.remove('hidden');
+                document.getElementById('view-today').classList.add('flex');
+                document.getElementById('tab-today').classList.add('tab-active');
+                document.getElementById('tab-today').classList.remove('text-blue-100');
+            } else {
+                document.getElementById('view-patients').classList.remove('hidden');
+                document.getElementById('view-patients').classList.add('flex');
+                document.getElementById('tab-patients').classList.add('tab-active');
+                document.getElementById('tab-patients').classList.remove('text-blue-100');
+            }
+        }
+
+        function openSettingsModal() {
+            document.getElementById('s-api-key').value = jsonbinKey;
+            document.getElementById('s-bin-id').value = jsonbinId;
+            document.getElementById('settings-modal').classList.remove('hidden');
+        }
+
+        function closeSettingsModal() {
+            document.getElementById('settings-modal').classList.add('hidden');
+        }
+
+        async function saveSettings() {
+            const newKey = document.getElementById('s-api-key').value.trim();
+            const newId = document.getElementById('s-bin-id').value.trim();
+
+            if (newKey) {
+                jsonbinKey = newKey;
+                localStorage.setItem('jsonbinKey', jsonbinKey);
+                
+                closeSettingsModal();
+                showLoading();
+
+                if (newId) {
+                    jsonbinId = newId;
+                    localStorage.setItem('jsonbinId', jsonbinId);
+                    await fetchFromJSONbin();
+                } else {
+                    // No ID provided, create a new bin with current data
+                    await createJSONbin();
+                }
+                hideLoading();
+            } else {
+                // Clear settings
+                jsonbinKey = '';
+                jsonbinId = '';
+                localStorage.removeItem('jsonbinKey');
+                localStorage.removeItem('jsonbinId');
+                updateSyncStatus('local');
+                closeSettingsModal();
+            }
+        }
+
+        function openPatientModal() {
+            document.getElementById('patient-form').reset();
+            document.getElementById('patient-id').value = '';
+            document.getElementById('modal-title').textContent = 'Add New Patient';
+            document.getElementById('patient-modal').classList.remove('hidden');
+        }
+
+        function closePatientModal() {
+            document.getElementById('patient-modal').classList.add('hidden');
+        }
+
+        window.editPatient = function(patient) {
+            document.getElementById('modal-title').textContent = 'Edit Patient';
+            document.getElementById('patient-id').value = patient.id;
+            document.getElementById('p-name').value = patient.name;
+            document.getElementById('p-address').value = patient.address;
+            document.getElementById('p-phone').value = patient.phone || '';
+            document.getElementById('p-notes').value = patient.notes || '';
+            
+            // Clear checkboxes
+            document.querySelectorAll('input[name="visit-days"]').forEach(cb => cb.checked = false);
+            
+            // Set checkboxes
+            if (patient.visitDays) {
+                patient.visitDays.forEach(day => {
+                    const cb = document.querySelector(`input[name="visit-days"][value="${day}"]`);
+                    if(cb) cb.checked = true;
+                });
+            }
+            
+            document.getElementById('patient-modal').classList.remove('hidden');
+        }
+
+        async function togglePatientStatus(id) {
+            const patient = patients.find(p => p.id === id);
+            if (patient) {
+                patient.visitedToday = !patient.visitedToday;
+                renderTodayView();
+                await syncData(); // Save the visited status to JSONbin/local
+            }
+        }
+
+        function openRouteInMaps() {
+            const todayPatients = patients.filter(p => p.visitDays && p.visitDays.includes(currentDayOfWeek.toString()));
+            if (todayPatients.length === 0) {
+                showNotice("No Route", "Add patients scheduled for today to create a route.", "info");
+                return;
+            }
+
+            // Get ordered addresses based on the current day's saved route order
+            const orderedAddresses = (routeOrders[currentDayOfWeek] || [])
+                .map(id => todayPatients.find(p => p.id === id)?.address)
+                .filter(Boolean)
+                .map(addr => encodeURIComponent(addr));
+
+            if (orderedAddresses.length === 0) return;
+
+            let url = "https://www.google.com/maps/dir/?api=1";
+            
+            if (orderedAddresses.length === 1) {
+                url += `&destination=${orderedAddresses[0]}`;
+            } else {
+                url += `&origin=${orderedAddresses[0]}`;
+                url += `&destination=${orderedAddresses[orderedAddresses.length - 1]}`;
+                
+                if (orderedAddresses.length > 2) {
+                    const waypoints = orderedAddresses.slice(1, -1).join('|');
+                    url += `&waypoints=${waypoints}`;
+                }
+            }
+            
+            window.open(url, '_blank');
+        }
+
+        function openSingleMap(encodedAddress) {
+            window.open(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`, '_blank');
+        }
+
+        function callPatient(phone) {
+            window.location.href = `tel:${phone}`;
+        }
+
+        function textPatient(phone) {
+            window.location.href = `sms:${phone}`;
+        }
+
+        function updateDateDisplay() {
+            const options = { weekday: 'long', month: 'long', day: 'numeric' };
+            document.getElementById('current-date-display').textContent = new Date().toLocaleDateString('en-US', options);
+            document.getElementById('filter-day').value = currentDayOfWeek.toString();
+        }
+
+        function showLoading() {
+            loadingOverlay.classList.remove('hidden');
+        }
+
+        function hideLoading() {
+            loadingOverlay.classList.add('hidden');
+        }
+
+        // Custom Alert/Confirm System
+        function showNotice(title, message, type = 'info') {
+            const modal = document.getElementById('custom-alert');
+            const content = document.getElementById('alert-content');
+            const iconCont = document.getElementById('alert-icon-container');
+            const icon = document.getElementById('alert-icon');
+            
+            document.getElementById('alert-title').textContent = title;
+            document.getElementById('alert-message').textContent = message;
+            
+            document.getElementById('alert-cancel').classList.add('hidden');
+            const confirmBtn = document.getElementById('alert-confirm');
+            
+            // Styling based on type
+            iconCont.className = 'w-10 h-10 rounded-full flex items-center justify-center shrink-0';
+            if(type === 'error') {
+                iconCont.classList.add('bg-red-100', 'text-red-600');
+                icon.className = 'fas fa-exclamation-triangle text-xl';
+                confirmBtn.className = 'px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors shadow-sm';
+            } else if (type === 'warning') {
+                 iconCont.classList.add('bg-yellow-100', 'text-yellow-600');
+                 icon.className = 'fas fa-exclamation-circle text-xl';
+                 confirmBtn.className = 'px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg font-medium transition-colors shadow-sm';
+            } else if (type === 'success') {
+                 iconCont.classList.add('bg-green-100', 'text-green-600');
+                 icon.className = 'fas fa-check-circle text-xl';
+                 confirmBtn.className = 'px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors shadow-sm';
+            } else {
+                iconCont.classList.add('bg-blue-100', 'text-blue-600');
+                icon.className = 'fas fa-info-circle text-xl';
+                confirmBtn.className = 'px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors shadow-sm';
+            }
+
+            confirmBtn.onclick = () => closeAlert();
+
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                content.classList.remove('scale-95', 'opacity-0');
+                content.classList.add('scale-100', 'opacity-100');
+            }, 10);
+        }
+
+        function confirmAction(title, message, onConfirm) {
+            showNotice(title, message, 'warning');
+            const cancelBtn = document.getElementById('alert-cancel');
+            const confirmBtn = document.getElementById('alert-confirm');
+            
+            cancelBtn.classList.remove('hidden');
+            
+            cancelBtn.onclick = () => closeAlert();
+            confirmBtn.onclick = () => {
+                closeAlert();
+                onConfirm();
+            };
+        }
+
+        function closeAlert() {
+            const modal = document.getElementById('custom-alert');
+            const content = document.getElementById('alert-content');
+            content.classList.remove('scale-100', 'opacity-100');
+            content.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 200);
+        }
+
+        // Start App
+        initApp();
+
+    </script>
+</body>
+</html>
