@@ -197,28 +197,43 @@
                     
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
-                        <input type="text" id="p-name" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                        <input type="text" id="p-name" required oninput="handleTitleCaseInput(event)" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
                     </div>
                     
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Address *</label>
-                        <div class="relative">
-                            <i class="fas fa-map-marker-alt absolute left-3 top-3 text-gray-400"></i>
-                            <input type="text" id="p-address" required placeholder="Street, City, State ZIP" class="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                        <div class="space-y-2">
+                            <div class="relative">
+                                <i class="fas fa-road absolute left-3 top-3 text-gray-400"></i>
+                                <input type="text" id="p-street" required placeholder="Street Address" oninput="handleTitleCaseInput(event)" class="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                            </div>
+                            <div class="flex gap-2">
+                                <div class="relative flex-1">
+                                    <i class="fas fa-city absolute left-3 top-3 text-gray-400"></i>
+                                    <input type="text" id="p-city" required placeholder="City" oninput="handleTitleCaseInput(event)" class="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                                </div>
+                                <div class="relative w-1/3">
+                                    <input type="text" id="p-zip" required placeholder="ZIP" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                                </div>
+                            </div>
                         </div>
                     </div>
                     
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-                            <div class="relative">
-                                <i class="fas fa-phone absolute left-3 top-3 text-gray-400"></i>
-                                <input type="tel" id="p-phone" placeholder="(555) 123-4567" class="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="col-span-1 sm:col-span-2">
+                            <label class="block text-sm font-medium text-gray-700 mb-1 flex justify-between items-center">
+                                <span>Phone Numbers</span>
+                                <button type="button" onclick="addPhoneField()" class="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1">
+                                    <i class="fas fa-plus"></i> Add Phone
+                                </button>
+                            </label>
+                            <div id="phone-list" class="space-y-2">
+                                <!-- Phone fields injected here -->
                             </div>
                         </div>
-                        <div>
+                        <div class="col-span-1 sm:col-span-2">
                             <label class="block text-sm font-medium text-gray-700 mb-1">Diagnosis/Notes</label>
-                            <input type="text" id="p-notes" placeholder="Brief note..." class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                            <input type="text" id="p-notes" placeholder="Brief note..." oninput="handleTitleCaseInput(event)" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
                         </div>
                     </div>
 
@@ -358,6 +373,64 @@
         window.openSettingsModal = openSettingsModal;
         window.closeSettingsModal = closeSettingsModal;
         window.saveSettings = saveSettings;
+        window.handleTitleCaseInput = handleTitleCaseInput;
+        window.formatPhoneInput = formatPhoneInput;
+        window.addPhoneField = addPhoneField;
+
+        // Auto-format helpers
+        function handleTitleCaseInput(e) {
+            const start = e.target.selectionStart;
+            const end = e.target.selectionEnd;
+            e.target.value = e.target.value.replace(/\b\w+/g, function(txt){
+                return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+            });
+            // Try to restore cursor position safely
+            if (e.target.type !== "number") {
+                try { e.target.setSelectionRange(start, end); } catch(err){}
+            }
+        }
+
+        function formatPhoneInput(e) {
+            const input = e.target;
+            // Get raw digits
+            let val = input.value.replace(/\D/g, '');
+            if (val.length > 10) val = val.substring(0, 10);
+            
+            let formatted = val;
+            if (val.length > 3 && val.length <= 6) {
+                formatted = `(${val.slice(0,3)})-${val.slice(3)}`;
+            } else if (val.length > 6) {
+                formatted = `(${val.slice(0,3)})-${val.slice(3,6)}-${val.slice(6)}`;
+            }
+            input.value = formatted;
+        }
+
+        function getFullAddress(patient) {
+            if (patient.street) {
+                return `${patient.street}, ${patient.city} ${patient.zip}`.trim().replace(/, $/, '');
+            }
+            return patient.address || '';
+        }
+
+        function addPhoneField(number = '', type = 'Mobile') {
+            const container = document.getElementById('phone-list');
+            const row = document.createElement('div');
+            row.className = 'flex gap-2 phone-entry items-center';
+            row.innerHTML = `
+                <select class="phone-type w-1/3 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white text-sm">
+                    <option value="Mobile" ${type === 'Mobile' ? 'selected' : ''}>Mobile</option>
+                    <option value="Home" ${type === 'Home' ? 'selected' : ''}>Home</option>
+                    <option value="Work" ${type === 'Work' ? 'selected' : ''}>Work</option>
+                    <option value="Other" ${type === 'Other' ? 'selected' : ''}>Other</option>
+                </select>
+                <div class="relative flex-1 flex gap-1 items-center">
+                    <i class="fas fa-phone absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-xs"></i>
+                    <input type="tel" value="${number}" placeholder="(555)-123-4567" oninput="formatPhoneInput(event)" class="phone-input w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                    <button type="button" onclick="this.parentElement.parentElement.remove()" class="text-red-500 hover:text-red-700 p-2 shrink-0 rounded hover:bg-red-50 transition-colors"><i class="fas fa-times"></i></button>
+                </div>
+            `;
+            container.appendChild(row);
+        }
 
         // Initialize App
         async function initApp() {
@@ -518,13 +591,24 @@
         async function savePatient() {
             // Validate form
             const name = document.getElementById('p-name').value.trim();
-            const address = document.getElementById('p-address').value.trim();
-            if (!name || !address) {
-                showNotice("Missing Info", "Please provide at least a name and address.", "warning");
+            const street = document.getElementById('p-street').value.trim();
+            const city = document.getElementById('p-city').value.trim();
+            const zip = document.getElementById('p-zip').value.trim();
+            
+            if (!name || !street || !city) {
+                showNotice("Missing Info", "Please provide a name, street, and city.", "warning");
                 return;
             }
 
-            const phone = document.getElementById('p-phone').value.trim();
+            // Gather phones
+            const phoneEls = document.querySelectorAll('.phone-entry');
+            const phones = [];
+            phoneEls.forEach(el => {
+                const num = el.querySelector('.phone-input').value.trim();
+                const type = el.querySelector('.phone-type').value;
+                if (num) phones.push({ number: num, type: type });
+            });
+
             const notes = document.getElementById('p-notes').value.trim();
             const id = document.getElementById('patient-id').value;
             
@@ -532,8 +616,9 @@
             const dayCheckboxes = document.querySelectorAll('input[name="visit-days"]:checked');
             const visitDays = Array.from(dayCheckboxes).map(cb => cb.value);
 
+            // Using empty 'address' string for backwards compatibility, using street/city/zip instead
             const patientData = {
-                name, address, phone, notes, visitDays,
+                name, street, city, zip, address: '', phones, notes, visitDays,
                 updatedAt: new Date().toISOString()
             };
 
@@ -607,6 +692,25 @@
                 // Status check (in-memory for this session)
                 const isVisited = patient.visitedToday === true;
                 const statusClass = isVisited ? 'text-green-500 bg-green-50 border-green-200' : 'text-gray-400 bg-gray-50 border-gray-200 hover:text-blue-500 hover:bg-blue-50 hover:border-blue-200';
+                
+                const addressStr = getFullAddress(patient);
+                const patientPhones = patient.phones || (patient.phone ? [{number: patient.phone, type: 'Primary'}] : []);
+                
+                let phonesHtml = '';
+                if (patientPhones.length > 0) {
+                    phonesHtml = '<div class="mt-2 space-y-1">';
+                    patientPhones.forEach(ph => {
+                        phonesHtml += `
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] uppercase font-bold text-gray-400 w-12 shrink-0">${ph.type}</span>
+                                <button onclick="callPatient('${ph.number}')" class="text-green-600 hover:bg-green-50 px-1.5 py-0.5 rounded border border-transparent hover:border-green-200" title="Call"><i class="fas fa-phone text-xs"></i></button>
+                                <button onclick="textPatient('${ph.number}')" class="text-blue-600 hover:bg-blue-50 px-1.5 py-0.5 rounded border border-transparent hover:border-blue-200" title="Text"><i class="fas fa-comment text-xs"></i></button>
+                                <span class="text-xs text-gray-700 font-medium">${ph.number}</span>
+                            </div>
+                        `;
+                    });
+                    phonesHtml += '</div>';
+                }
 
                 card.innerHTML = `
                     <div class="mt-1 drag-handle text-gray-300 group-hover:text-gray-500 cursor-grab px-1">
@@ -620,15 +724,14 @@
                     <div class="flex-1 min-w-0">
                         <div class="flex justify-between items-start">
                             <h4 class="font-bold text-gray-800 truncate ${isVisited ? 'line-through text-gray-500' : ''}">${patient.name}</h4>
-                            <div class="flex gap-2">
-                                ${patient.phone ? `<button onclick="callPatient('${patient.phone}')" class="text-green-600 hover:bg-green-50 p-1.5 rounded" title="Call"><i class="fas fa-phone"></i></button>
-                                                   <button onclick="textPatient('${patient.phone}')" class="text-blue-600 hover:bg-blue-50 p-1.5 rounded" title="Text"><i class="fas fa-comment"></i></button>` : ''}
-                                <button onclick="openSingleMap('${encodeURIComponent(patient.address)}')" class="text-red-500 hover:bg-red-50 p-1.5 rounded" title="Directions"><i class="fas fa-map-marker-alt"></i></button>
+                            <div class="flex gap-2 shrink-0 ml-2">
+                                <button onclick="openSingleMap('${encodeURIComponent(addressStr)}')" class="text-red-500 hover:bg-red-50 p-1.5 rounded" title="Directions"><i class="fas fa-map-marker-alt"></i></button>
                             </div>
                         </div>
                         <p class="text-sm text-gray-600 truncate mt-1 flex items-center gap-1">
-                             <i class="fas fa-location-arrow text-xs text-gray-400"></i> ${patient.address}
+                             <i class="fas fa-location-arrow text-xs text-gray-400"></i> ${addressStr}
                         </p>
+                        ${phonesHtml}
                         ${patient.notes ? `<p class="text-xs text-gray-500 mt-2 bg-gray-50 p-2 rounded italic"><i class="fas fa-clipboard text-gray-400 mr-1"></i>${patient.notes}</p>` : ''}
                     </div>
                 `;
@@ -674,8 +777,13 @@
 
             // Apply filters
             filteredPatients = filteredPatients.filter(p => {
+                const fullAddr = getFullAddress(p).toLowerCase();
+                const patientPhones = p.phones || (p.phone ? [{number: p.phone, type: 'Primary'}] : []);
+                const phoneMatch = patientPhones.some(ph => ph.number.includes(searchTerm));
+
                 const matchesSearch = p.name.toLowerCase().includes(searchTerm) || 
-                                      p.address.toLowerCase().includes(searchTerm) ||
+                                      fullAddr.includes(searchTerm) ||
+                                      phoneMatch ||
                                       (p.notes && p.notes.toLowerCase().includes(searchTerm));
                 
                 const matchesDay = filterDay === 'all' || (p.visitDays && p.visitDays.includes(filterDay));
@@ -693,6 +801,20 @@
                 const card = document.createElement('div');
                 card.className = 'bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex flex-col hover:shadow-md transition-shadow';
                 
+                const addressStr = getFullAddress(patient);
+                const patientPhones = patient.phones || (patient.phone ? [{number: patient.phone, type: 'Primary'}] : []);
+                
+                let phonesHtml = '';
+                if (patientPhones.length > 0) {
+                    phonesHtml = patientPhones.map(ph => `
+                        <p class="text-sm text-gray-600 flex items-center gap-2">
+                            <i class="fas fa-phone text-gray-400 shrink-0 w-4"></i>
+                            <span class="text-[10px] uppercase font-bold text-gray-400 w-10 shrink-0">${ph.type}</span>
+                            <a href="tel:${ph.number}" class="text-blue-600 hover:underline">${ph.number}</a>
+                        </p>
+                    `).join('');
+                }
+
                 // Format days badge
                 let daysHtml = '<span class="text-xs text-gray-400 italic">No days scheduled</span>';
                 if (patient.visitDays && patient.visitDays.length > 0) {
@@ -716,13 +838,9 @@
                     <div class="space-y-2 mb-4 flex-1">
                         <p class="text-sm text-gray-600 flex items-start gap-2">
                             <i class="fas fa-map-marker-alt text-gray-400 mt-1 shrink-0 w-4"></i>
-                            <span class="break-words">${patient.address}</span>
+                            <span class="break-words">${addressStr}</span>
                         </p>
-                        ${patient.phone ? `
-                        <p class="text-sm text-gray-600 flex items-center gap-2">
-                            <i class="fas fa-phone text-gray-400 shrink-0 w-4"></i>
-                            <a href="tel:${patient.phone}" class="text-blue-600 hover:underline">${patient.phone}</a>
-                        </p>` : ''}
+                        ${phonesHtml}
                     </div>
 
                     <div class="mt-auto border-t border-gray-100 pt-3">
@@ -810,6 +928,8 @@
             document.getElementById('patient-form').reset();
             document.getElementById('patient-id').value = '';
             document.getElementById('modal-title').textContent = 'Add New Patient';
+            document.getElementById('phone-list').innerHTML = '';
+            addPhoneField();
             document.getElementById('patient-modal').classList.remove('hidden');
         }
 
@@ -820,10 +940,21 @@
         window.editPatient = function(patient) {
             document.getElementById('modal-title').textContent = 'Edit Patient';
             document.getElementById('patient-id').value = patient.id;
-            document.getElementById('p-name').value = patient.name;
-            document.getElementById('p-address').value = patient.address;
-            document.getElementById('p-phone').value = patient.phone || '';
+            document.getElementById('p-name').value = patient.name || '';
+            document.getElementById('p-street').value = patient.street || patient.address || '';
+            document.getElementById('p-city').value = patient.city || '';
+            document.getElementById('p-zip').value = patient.zip || '';
             document.getElementById('p-notes').value = patient.notes || '';
+            
+            const phoneList = document.getElementById('phone-list');
+            phoneList.innerHTML = '';
+            const patientPhones = patient.phones || (patient.phone ? [{number: patient.phone, type: 'Primary'}] : []);
+            
+            if (patientPhones.length === 0) {
+                addPhoneField();
+            } else {
+                patientPhones.forEach(ph => addPhoneField(ph.number, ph.type));
+            }
             
             // Clear checkboxes
             document.querySelectorAll('input[name="visit-days"]').forEach(cb => cb.checked = false);
@@ -857,9 +988,9 @@
 
             // Get ordered addresses based on the current day's saved route order
             const orderedAddresses = (routeOrders[currentDayOfWeek] || [])
-                .map(id => todayPatients.find(p => p.id === id)?.address)
+                .map(id => todayPatients.find(p => p.id === id))
                 .filter(Boolean)
-                .map(addr => encodeURIComponent(addr));
+                .map(p => encodeURIComponent(getFullAddress(p)));
 
             if (orderedAddresses.length === 0) return;
 
